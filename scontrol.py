@@ -48,7 +48,7 @@ def hsvt(Z, rank = 2):
 def cum_energy(s):
     return (100*(s**2).cumsum()/(s**2).sum())
 
-def pcr(X, y, rank = 2):
+def pcr(X1, X2, y, rank=2, full_matrix_denoise=False):
     """
     Input:
         X (N,T)
@@ -57,8 +57,13 @@ def pcr(X, y, rank = 2):
     Output:
         beta (N) a linear model
     """
-    X = hsvt(X,rank=rank)
-    beta = np.linalg.pinv(X.T).dot(y)
+    if full_matrix_denoise:
+    	X = hsvt(np.concatenate((X1, X2), axis=1), rank=rank)
+    else:
+    	X = hsvt(X1,rank=rank)
+    _, n = X1.shape
+    X_pre = X[:, :n]
+    beta = np.linalg.pinv(X_pre.T).dot(y)
     return beta
 
 
@@ -87,7 +92,7 @@ def diagnostic(rct_data, rank = 2):
 
 ###### OUTPUT ##########
 
-def fill_tensor(rct_data, rank = 2):
+def fill_tensor(rct_data, rank=2, full_matrix_denoise=False):
     """
     Gives the counterfactual observation for an unobserved cell
     
@@ -97,21 +102,54 @@ def fill_tensor(rct_data, rank = 2):
     Output:
         Counterfactual estimation for all tensor
     """
+    # get pre- and post- intervention dataframes
     pre_df, post_df = rct_data
+
+    # get all unique interventions (from post-intervention dataframe)
     interventions = np.sort(pd.unique(post_df.intervention))
+
+    # sort all units (using pre-intervention data)
     units = np.sort(pre_df.unit)
+
+    # get number of units and interventions
     N, I = len(units), len(interventions)
+
+    # check no duplicate units in pre-intervention dataframe
+    assert len(pre_df.unit.unique()) == N
+
+    # initialize output dataframe size
     out_data = np.zeros((N*I,post_df.shape[1]-2))
     
+    # loop through all interventions 
     for i, inter in enumerate(interventions):
         #Keep relevant experiments
+
+        # extract all units that receive intervention "inter" (P_inter)
         filter_inter = (post_df["intervention"] == inter)
-        X1 = np.array(pre_df[filter_inter].drop(columns=["intervention","unit"]))
-        for n, unit in enumerate(pre_df.index):
-            y1 = np.array(pre_df[pre_df.index==unit].drop(columns=["intervention","unit"]))[0]
-            #Build llinear model
-            beta = pcr(X1,y1,rank=rank)
-            X2 = np.array(post_df[filter_inter].drop(columns=["intervention","unit"]))
+
+        # get pre-intervention measurements associated with P_inter
+        X1_df = pre_df[filter_inter] #.drop(columns=["intervention","unit"]))
+
+        # loop through all units (make sure id's unique)
+        for n, unit in enumerate(pre_df.unit):
+        	# get target unit pre-intervention measurements
+            y1 = np.array(pre_df[pre_df.unit==unit].drop(columns=["intervention","unit"]))[0]
+
+            # get donor unit post-intervention measurements for intervention "inter"
+            X2_df = post_df[filter_inter]
+
+            # check if unit is in donor pool 
+            if unit in post_df[filter_inter].unit.values: 
+            	X1 = X1_df.loc[(X1_df.unit != unit)].drop(columns=['intervention', 'unit']).values
+            	X2 = X2_df.loc[(X2_df.unit != unit)].drop(columns=['intervention', 'unit']).values
+            else:
+            	X1 = X1_df.drop(columns=['intervention', 'unit']).values
+            	X2 = X2_df.drop(columns=['intervention', 'unit']).values
+
+            #Build linear model
+            beta = pcr(X1, X2, y1, rank=rank, full_matrix_denoise=full_matrix_denoise)
+
+            # forecast counterfactual
             out_data[n*I+i] = (X2.T).dot(beta)
             
     out_units = [units[k//I] for k in range(N*I)]
