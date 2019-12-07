@@ -23,24 +23,30 @@ def random_rct(N, I, T, T0, rank=2, sigma=0.1):
     pre_data = np.zeros((N, T0))
     post_data = np.zeros((N, T - T0))
     i_rcv = np.random.randint(0, I, size=(N))
-    ids, times, interventions = ["id_" + str(i) for i in range(N)], np.array(
-        ["t_" + str(t) for t in range(T)]), np.array(["inter_" + str(i) for i in range(I)])
+
+    ids = ["id_" + str(i) for i in range(N)]
+    times = np.array(["t_" + str(t) for t in range(T)])
+    interventions = np.array(["inter_" + str(i) for i in range(I)])
+
     U = np.random.normal(size=(N, rank))
     V = np.random.normal(size=(T, rank))
     F = np.random.normal(size=(I, rank))
+
     for n in range(N):
         for t in range(T0):
             pre_data[n, t] = (U[n, :] * V[t, :] * F[i_rcv[0], :]).sum() + sigma * np.random.normal()
         for t in range(T0, T):
             post_data[n, t - T0] = (U[n, :] * V[t, :] * F[i_rcv[n], :]).sum() + sigma * np.random.normal()
+
     pre_df = pd.DataFrame(data=pre_data, columns=times[:T0])
     pre_df.insert(0, "intervention", [interventions[0]] * N)
     pre_df.insert(0, "unit", ids)
+
     post_df = pd.DataFrame(data=post_data, columns=times[T0:])
     post_df.insert(0, "intervention", interventions[i_rcv])
     post_df.insert(0, "unit", ids)
-    return pre_df, post_df
 
+    return pre_df, post_df
 
 ###### COMPUTATION ######
 
@@ -48,7 +54,6 @@ def hsvt(Z, rank=2):
     u, s, vh = np.linalg.svd(Z, full_matrices=False)
     s[rank:].fill(0)
     return np.dot(u * s, vh)
-
 
 def cum_energy(s):
     return (100 * (s ** 2).cumsum() / (s ** 2).sum())
@@ -66,11 +71,10 @@ def pcr(X1, X2, y, rank=2, full_matrix_denoise=False):
         X = hsvt(np.concatenate((X1, X2), axis=1), rank=rank)
     else:
         X = hsvt(X1, rank=rank)
-    _, n = X1.shape
-    X_pre = X[:, :n]
+    _, T = X1.shape
+    X_pre = X[:, :T]
     beta = np.linalg.pinv(X_pre.T).dot(y)
     return beta
-
 
 ###### DIAGNOSTIC ######
 
@@ -103,13 +107,6 @@ def diagnostic(pre_df, post_df, cum_energy=0.90):
         diagnostics_data_pre[i] = int(pre_rank)
         diagnostics_data_tot[i] = int(tot_rank)
 
-#         print(s_pre)
-#         print(s_tot)
-#         print(cum_s_pre)
-#         print(cum_s_tot)
-#         print(pre_rank, tot_rank)
-#         print()
-
     cum_energy_percentage = cum_energy * 100.0
 
     diag = pd.DataFrame(data=diagnostics_data_pre, columns = ["Pre Intervention Rank (" + str(cum_energy_percentage) + "%)"])
@@ -124,7 +121,7 @@ def diagnostic(pre_df, post_df, cum_energy=0.90):
 
 ###### OUTPUT ##########
 
-def fill_tensor(pre_df, post_df, cum_energy=0.90, full_matrix_denoise=False):
+def fill_tensor(pre_df, post_df, cum_energy=0.90, full_matrix_denoise=True):
     """
     Gives the counterfactual observation for an unobserved cell
 
@@ -178,12 +175,14 @@ def fill_tensor(pre_df, post_df, cum_energy=0.90, full_matrix_denoise=False):
                 X1 = X1_df.drop(columns=['intervention', 'unit']).values
                 X2 = X2_df.drop(columns=['intervention', 'unit']).values
 
-            _, s_pre, _ = np.linalg.svd(X1, full_matrices=False)
-            cum_s_pre = (100 * (s_pre ** 2).cumsum() / (s_pre ** 2).sum())
-            pre_rank = [index for index, singular_value_cum_energy in enumerate(cum_s_pre) if singular_value_cum_energy > 100 * cum_energy ][0] + 1
+            Xtot = np.concatenate((X1, X2), axis=1)
+            _, s_tot, _ = np.linalg.svd(Xtot, full_matrices=False)
+            cum_s_tot = (100 * (s_tot ** 2).cumsum() / (s_tot ** 2).sum())
+            post_rank = [index for index, singular_value_cum_energy in enumerate(cum_s_tot) if singular_value_cum_energy > 100 * cum_energy ][0] + 1
 
             # Build linear model
-            beta = pcr(X1, X2, y1, rank=pre_rank, full_matrix_denoise=full_matrix_denoise)
+            beta = pcr(X1, X2, y1, rank=post_rank, full_matrix_denoise=full_matrix_denoise)
+
             # forecast counterfactual
             out_data[n * I + i] = (X2.T).dot(beta)
 
@@ -192,4 +191,5 @@ def fill_tensor(pre_df, post_df, cum_energy=0.90, full_matrix_denoise=False):
     out = pd.DataFrame(data=out_data, columns=post_df.drop(columns=["intervention", "unit"]).columns)
     out.insert(0, "intervention", out_interventions)
     out.insert(0, "unit", out_units)
+
     return out
