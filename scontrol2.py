@@ -19,6 +19,7 @@ def random_rct(N, I, T, T0, rank=2, sigma=0.1):
     Output:
         Dataframe of a randomly generated RCT experiment.
     """
+
     pre_data = np.zeros((N, T0))
     post_data = np.zeros((N, T - T0))
     i_rcv = np.random.randint(0, I, size=(N))
@@ -52,7 +53,6 @@ def hsvt(Z, rank=2):
 def cum_energy(s):
     return (100 * (s ** 2).cumsum() / (s ** 2).sum())
 
-
 def pcr(X1, X2, y, rank=2, full_matrix_denoise=False):
     """
     Input:
@@ -74,32 +74,57 @@ def pcr(X1, X2, y, rank=2, full_matrix_denoise=False):
 
 ###### DIAGNOSTIC ######
 
-def diagnostic(rct_data, rank=2):
+def diagnostic(pre_df, post_df, cum_energy=0.90):
     """
-    Checks if 90% of energy is within rank
+    Checks if cum_energy threshold (e.g. 95%) remains within
     """
-    pre_df, post_df = rct_data
+    # pre_df, post_df = rct_data
     interventions = np.sort(pd.unique(post_df.intervention))
-    diagnostics_data = np.zeros(len(interventions))
+    diagnostics_data_pre = np.zeros(len(interventions))
+    diagnostics_data_tot = np.zeros(len(interventions))
 
     for i, inter in enumerate(interventions):
         unit_ids = post_df[post_df['intervention'] == inter]['unit']
+
         M1 = np.array(pre_df[pre_df['unit'].isin(unit_ids)].drop(columns=["unit", "intervention"]))
         M2 = np.array(post_df[(post_df.intervention == inter) & (post_df['unit'].isin(unit_ids))].drop(columns=["unit", "intervention"]))
         Mtot = np.concatenate((M1, M2), axis=1)
-        _, s, _ = np.linalg.svd(Mtot, full_matrices=False)
-        cum_energy(s)
-        diagnostics_data[i] = cum_energy(s)[rank - 1]
 
-    diag = pd.DataFrame(data=diagnostics_data, columns=["cum. energy at " + str(rank) + " (%)"])
+        _, s_pre, _ = np.linalg.svd(M1, full_matrices=False)
+        _, s_tot, _ = np.linalg.svd(Mtot, full_matrices=False)
+
+        # Cumulative Energy of the spectrum at each singular value pre and post intervention
+        cum_s_pre = (100 * (s_pre ** 2).cumsum() / (s_pre ** 2).sum())
+        cum_s_tot = (100 * (s_tot ** 2).cumsum() / (s_tot ** 2).sum())
+
+        pre_rank = [index for index, singular_value_cum_energy in enumerate(cum_s_pre) if singular_value_cum_energy > 100 * cum_energy ][0] + 1
+        tot_rank = [index for index, singular_value_cum_energy in enumerate(cum_s_tot) if singular_value_cum_energy > 100 * cum_energy ][0] + 1
+
+        diagnostics_data_pre[i] = int(pre_rank)
+        diagnostics_data_tot[i] = int(tot_rank)
+
+#         print(s_pre)
+#         print(s_tot)
+#         print(cum_s_pre)
+#         print(cum_s_tot)
+#         print(pre_rank, tot_rank)
+#         print()
+
+    cum_energy_percentage = cum_energy * 100.0
+
+    diag = pd.DataFrame(data=diagnostics_data_pre, columns = ["Pre Intervention Rank (" + str(cum_energy_percentage) + "%)"])
+    diag["Post Intervention Rank (" + str(cum_energy_percentage) + "%)"] = diagnostics_data_tot
+
+    # Add Diagnostic - True/False. Check that rank has not changed
     diag.insert(0, "intervention", interventions)
-    diag["Valid (>90)"] = (diag["cum. energy at " + str(rank) + " (%)"] > 90)
+    diag["Valid (" + str(cum_energy_percentage) + "%)"] = diag["Pre Intervention Rank (" + str(cum_energy_percentage) + "%)"] == diag["Post Intervention Rank (" + str(cum_energy_percentage) + "%)"]
+
     return diag
 
 
 ###### OUTPUT ##########
 
-def fill_tensor(rct_data, rank=2, full_matrix_denoise=False):
+def fill_tensor(pre_df, post_df, cum_energy=0.90, full_matrix_denoise=False):
     """
     Gives the counterfactual observation for an unobserved cell
 
@@ -110,7 +135,7 @@ def fill_tensor(rct_data, rank=2, full_matrix_denoise=False):
         Counterfactual estimation for all tensor
     """
     # get pre- and post- intervention dataframes
-    pre_df, post_df = rct_data
+    # pre_df, post_df = rct_data
 
     # get all unique interventions (from post-intervention dataframe)
     interventions = np.sort(pd.unique(post_df.intervention))
@@ -153,8 +178,12 @@ def fill_tensor(rct_data, rank=2, full_matrix_denoise=False):
                 X1 = X1_df.drop(columns=['intervention', 'unit']).values
                 X2 = X2_df.drop(columns=['intervention', 'unit']).values
 
+            _, s_pre, _ = np.linalg.svd(X1, full_matrices=False)
+            cum_s_pre = (100 * (s_pre ** 2).cumsum() / (s_pre ** 2).sum())
+            pre_rank = [index for index, singular_value_cum_energy in enumerate(cum_s_pre) if singular_value_cum_energy > 100 * cum_energy ][0] + 1
+
             # Build linear model
-            beta = pcr(X1, X2, y1, rank=rank, full_matrix_denoise=full_matrix_denoise)
+            beta = pcr(X1, X2, y1, rank=pre_rank, full_matrix_denoise=full_matrix_denoise)
             # forecast counterfactual
             out_data[n * I + i] = (X2.T).dot(beta)
 
