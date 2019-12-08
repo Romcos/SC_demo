@@ -121,7 +121,7 @@ def diagnostic(post_df, df_output):
 
 ###### OUTPUT ##########
 
-def fill_tensor(pre_df, post_df, cum_energy=0.90, full_matrix_denoise=True):
+def fill_tensor(pre_df, post_df, rank=2, full_matrix_denoise=True):
     """
     Gives the counterfactual observation for an unobserved cell
 
@@ -175,14 +175,14 @@ def fill_tensor(pre_df, post_df, cum_energy=0.90, full_matrix_denoise=True):
                 X1 = X1_df.drop(columns=['intervention', 'unit']).values
                 X2 = X2_df.drop(columns=['intervention', 'unit']).values
 
-            Xtot = np.concatenate((X1, X2), axis=1)
-            _, s_tot, _ = np.linalg.svd(Xtot, full_matrices=False)
-            cum_s_tot = (100 * (s_tot ** 2).cumsum() / (s_tot ** 2).sum())
-            
-            #post_rank = [index for index, singular_value_cum_energy in enumerate(cum_s_tot) if singular_value_cum_energy > 100 * cum_energy ][0] + 1 #NOT WORKING -> TO REDEFINE. Try something like: post_rank = list(cum_s_tot>90).index(True)+1
+##            Xtot = np.concatenate((X1, X2), axis=1)
+##            _, s_tot, _ = np.linalg.svd(Xtot, full_matrices=False)
+##            cum_s_tot = (100 * (s_tot ** 2).cumsum() / (s_tot ** 2).sum())
+##            
+##            #post_rank = [index for index, singular_value_cum_energy in enumerate(cum_s_tot) if singular_value_cum_energy > 100 * cum_energy ][0] + 1 #NOT WORKING -> TO REDEFINE. Try something like: post_rank = list(cum_s_tot>90).index(True)+1
 
             # Build linear model
-            beta = pcr(X1, X2, y1, rank=2, full_matrix_denoise=full_matrix_denoise)
+            beta = pcr(X1, X2, y1, rank=rank, full_matrix_denoise=full_matrix_denoise)
 
             # forecast counterfactual
             out_data[n * I + i] = (X2.T).dot(beta)
