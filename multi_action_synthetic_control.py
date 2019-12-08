@@ -95,25 +95,19 @@ def diagnostic(post_df, df_output):
 
         unit_ids = post_df[post_df['intervention'] == inter]['unit']
 
-        R2_intervention_list = []
+        baseline_error_sum = 0
+        estimated_error_sum = 0
 
         for unit in unit_ids:
 
             y = post_df.loc[(post_df.unit==unit) & (post_df.intervention==inter)].drop(columns=['unit', 'intervention']).values
             y_hat = df_output.loc[(df_output.unit==unit) & (df_output.intervention==inter)].drop(columns=['unit', 'intervention']).values
 
-            baseline_error = (y.mean() - y)**2
-            baseline_error_sum = baseline_error.sum()
+            baseline_error_sum += ((y.mean() - y)**2).sum()
 
-            estimated_error = (y_hat - y)**2
-            estimate_error_sum = estimated_error.sum()
-
-            R2_unit_intervention = 1 - (estimate_error_sum / baseline_error_sum)
-
-            R2_intervention_list.append(R2_unit_intervention)
-
-        R2_intervention_average = np.mean(R2_intervention_list)
-        R2_all_interventions[i] = R2_intervention_average
+            estimated_error_sum += ((y_hat - y)**2).sum()
+          
+        R2_all_interventions[i] = 1 - estimated_error_sum / baseline_error_sum
 
     diag = pd.DataFrame(data= R2_all_interventions, columns = ["Average R^2 Value"])
     diag.insert(0, "intervention", interventions)
@@ -144,7 +138,7 @@ def fill_tensor(pre_df, post_df, cum_energy=0.90, full_matrix_denoise=True):
     interventions = np.sort(pd.unique(post_df.intervention))
 
     # sort all units (using pre-intervention data)
-    units = np.sort(pre_df.unit)
+    units = pre_df.unit
 
     # get number of units and interventions
     N, I = len(units), len(interventions)
@@ -184,10 +178,11 @@ def fill_tensor(pre_df, post_df, cum_energy=0.90, full_matrix_denoise=True):
             Xtot = np.concatenate((X1, X2), axis=1)
             _, s_tot, _ = np.linalg.svd(Xtot, full_matrices=False)
             cum_s_tot = (100 * (s_tot ** 2).cumsum() / (s_tot ** 2).sum())
-            post_rank = [index for index, singular_value_cum_energy in enumerate(cum_s_tot) if singular_value_cum_energy > 100 * cum_energy ][0] + 1
+            
+            #post_rank = [index for index, singular_value_cum_energy in enumerate(cum_s_tot) if singular_value_cum_energy > 100 * cum_energy ][0] + 1 #NOT WORKING -> TO REDEFINE. Try something like: post_rank = list(cum_s_tot>90).index(True)+1
 
             # Build linear model
-            beta = pcr(X1, X2, y1, rank=post_rank, full_matrix_denoise=full_matrix_denoise)
+            beta = pcr(X1, X2, y1, rank=2, full_matrix_denoise=full_matrix_denoise)
 
             # forecast counterfactual
             out_data[n * I + i] = (X2.T).dot(beta)
