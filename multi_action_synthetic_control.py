@@ -155,11 +155,16 @@ def fill_tensor(pre_df, post_df, rank=2, full_matrix_denoise=True, center=True):
 
     # center data
     if center:
+        pre_df = pre_df.copy()
         pre_df_means = pre_df.mean(axis=0)
         pre_df.loc[:, ~pre_df.columns.isin(['intervention', 'unit'])] -= pre_df_means
 
-        post_df_means = post_df.mean(axis=0)
-        post_df.loc[:, ~post_df.columns.isin(['intervention', 'unit'])] -= post_df_means
+        post_df = post_df.copy()
+        intervention_means = {inter: post_df[post_df.intervention == inter].mean(axis=0) for inter in interventions}
+        for inter in interventions:
+            rows = post_df.intervention == inter
+            cols = ~post_df.columns.isin(['intervention', 'unit'])
+            post_df[rows].loc[:, cols] -= intervention_means[inter]
 
     # loop through all interventions
     for i, inter in enumerate(interventions):
@@ -199,9 +204,9 @@ def fill_tensor(pre_df, post_df, rank=2, full_matrix_denoise=True, center=True):
 
             # forecast counterfactual
             out_data[n * I + i] = (X2.T).dot(beta)
+            if center:
+                out_data[n * I + i] += intervention_means[inter]
 
-    if center:
-        out_data += post_df_means.values
     out_units = [units[k // I] for k in range(N * I)]
     out_interventions = [interventions[k % I] for k in range(N * I)]
     out = pd.DataFrame(data=out_data, columns=post_df.drop(columns=["intervention", "unit"]).columns)
