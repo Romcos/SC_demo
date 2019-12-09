@@ -150,13 +150,17 @@ def fill_tensor(pre_df, post_df, rank=2, full_matrix_denoise=True, center=True):
     # initialize output dataframe size
     out_data = np.zeros((N * I, post_df.shape[1] - 2))
 
+    beta_dict = {}
+
     # center data
     if center:
         pre_df_means = pre_df.mean(axis=0)
         pre_df.loc[:, ~pre_df.columns.isin(['intervention', 'unit'])].subtract(pre_df_means)
+        print(pre_df.mean(axis=0))
 
         post_df_means = post_df.mean(axis=0)
         post_df.loc[:, ~post_df.columns.isin(['intervention', 'unit'])].subtract(post_df_means)
+        print(post_df.mean(axis=0))
 
     # loop through all interventions
     for i, inter in enumerate(interventions):
@@ -192,6 +196,7 @@ def fill_tensor(pre_df, post_df, rank=2, full_matrix_denoise=True, center=True):
 
             # Build linear model
             beta = pcr(X1, X2, y1, rank=rank, full_matrix_denoise=full_matrix_denoise)
+            beta_dict[(inter, unit)] = beta
 
             # forecast counterfactual
             out_data[n * I + i] = (X2.T).dot(beta)
@@ -204,4 +209,4 @@ def fill_tensor(pre_df, post_df, rank=2, full_matrix_denoise=True, center=True):
     out.insert(0, "intervention", out_interventions)
     out.insert(0, "unit", out_units)
 
-    return out
+    return out, beta_dict
