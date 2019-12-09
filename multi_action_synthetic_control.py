@@ -197,7 +197,7 @@ def fill_tensor(pre_df, post_df, rank=2, full_matrix_denoise=True, center=True):
             out_data[n * I + i] = (X2.T).dot(beta)
 
     if center:
-        out_data += post_df_means
+        out_data += post_df_means.values
     out_units = [units[k // I] for k in range(N * I)]
     out_interventions = [interventions[k % I] for k in range(N * I)]
     out = pd.DataFrame(data=out_data, columns=post_df.drop(columns=["intervention", "unit"]).columns)
