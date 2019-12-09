@@ -75,8 +75,6 @@ def pcr(X1, X2, y, rank=2, full_matrix_denoise=False):
     _, T = X1.shape
     X_pre = X[:, :T]
     beta = np.linalg.pinv(X_pre.T).dot(y)
-    beta2 = lstsq(X_pre.T, y)
-    print(beta, beta2)
     return beta
 
 ###### DIAGNOSTIC ######
