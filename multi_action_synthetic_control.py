@@ -51,6 +51,8 @@ def random_rct(N, I, T, T0, rank=2, sigma=0.1):
 ###### COMPUTATION ######
 
 def hsvt(Z, rank=2):
+    if rank is None:
+        return Z
     u, s, vh = np.linalg.svd(Z, full_matrices=False)
     s[rank:].fill(0)
     return np.dot(u * s, vh)
@@ -74,7 +76,6 @@ def pcr(X1, X2, y, rank=2, full_matrix_denoise=False):
     _, T = X1.shape
     X_pre = X[:, :T]
     beta = np.linalg.pinv(X_pre.T).dot(y)
-    print(beta)
     return beta
 
 ###### DIAGNOSTIC ######
@@ -159,15 +160,11 @@ def fill_tensor(pre_df, post_df, rank=2, full_matrix_denoise=True, center=True):
         pre_df.loc[:, ~pre_df.columns.isin(['intervention', 'unit'])] -= pre_df_means
 
         post_df = post_df.copy()
-        intervention_means = {inter: post_df[post_df.intervention == inter].mean(axis=0) for inter in interventions}
+        intervention_means = post_df.groupby('intervention').mean()
         cols = ~post_df.columns.isin(['intervention', 'unit'])
         for inter in interventions:
             rows = post_df.intervention == inter
-            post_df.loc[rows, cols] -= intervention_means[inter]
-
-        print(pre_df.mean(axis=0))
-        for inter in interventions:
-            print(post_df[post_df.intervention == inter].mean(axis=0))
+            post_df.loc[rows, cols] -= intervention_means.loc[inter]
 
     # loop through all interventions
     for i, inter in enumerate(interventions):
@@ -208,7 +205,7 @@ def fill_tensor(pre_df, post_df, rank=2, full_matrix_denoise=True, center=True):
             # forecast counterfactual
             out_data[n * I + i] = (X2.T).dot(beta)
             if center:
-                out_data[n * I + i] += intervention_means[inter]
+                out_data[n * I + i] += intervention_means.loc[inter]
 
     out_units = [units[k // I] for k in range(N * I)]
     out_interventions = [interventions[k % I] for k in range(N * I)]
