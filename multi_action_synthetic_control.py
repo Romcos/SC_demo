@@ -164,7 +164,7 @@ def fill_tensor(pre_df, post_df, rank=2, full_matrix_denoise=True, center=True):
         for inter in interventions:
             rows = post_df.intervention == inter
             cols = ~post_df.columns.isin(['intervention', 'unit'])
-            post_df[rows].loc[:, cols] -= intervention_means[inter]
+            post_df.loc[rows, cols] -= intervention_means[inter]
 
     # loop through all interventions
     for i, inter in enumerate(interventions):
