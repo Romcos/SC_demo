@@ -155,11 +155,11 @@ def fill_tensor(pre_df, post_df, rank=2, full_matrix_denoise=True, center=True):
     # center data
     if center:
         pre_df_means = pre_df.mean(axis=0)
-        pre_df.loc[:, ~pre_df.columns.isin(['intervention', 'unit'])].subtract(pre_df_means)
+        pre_df.loc[:, ~pre_df.columns.isin(['intervention', 'unit'])] -= pre_df_means
         print(pre_df.mean(axis=0))
 
         post_df_means = post_df.mean(axis=0)
-        post_df.loc[:, ~post_df.columns.isin(['intervention', 'unit'])].subtract(post_df_means)
+        post_df.loc[:, ~post_df.columns.isin(['intervention', 'unit'])] -= post_df_means
         print(post_df.mean(axis=0))
 
     # loop through all interventions
