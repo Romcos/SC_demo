@@ -1,7 +1,6 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from numpy.linalg import lstsq
 
 
 ####### SAMPLING ######
@@ -161,10 +160,14 @@ def fill_tensor(pre_df, post_df, rank=2, full_matrix_denoise=True, center=True):
 
         post_df = post_df.copy()
         intervention_means = {inter: post_df[post_df.intervention == inter].mean(axis=0) for inter in interventions}
+        cols = ~post_df.columns.isin(['intervention', 'unit'])
         for inter in interventions:
             rows = post_df.intervention == inter
-            cols = ~post_df.columns.isin(['intervention', 'unit'])
             post_df.loc[rows, cols] -= intervention_means[inter]
+
+        print(pre_df.mean(axis=0))
+        for inter in interventions:
+            print(post_df[post_df.intervention == inter].mean(axis=0))
 
     # loop through all interventions
     for i, inter in enumerate(interventions):
