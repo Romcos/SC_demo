@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from numpy.linalg import lstsq
 
 
 ####### SAMPLING ######
@@ -68,7 +69,10 @@ def pcr(X1, X2, y, rank=2, full_matrix_denoise=False):
         X = hsvt(X1, rank=rank)
     _, n = X1.shape
     X_pre = X[:, :n]
+    X_pre = np.vstack(X_pre)
     beta = np.linalg.pinv(X_pre.T).dot(y)
+    beta2 = lstsq(X_pre.T, y)
+    print(beta, beta2)
     return beta
 
 
@@ -135,7 +139,7 @@ def fill_tensor(rct_data, rank=2, full_matrix_denoise=False):
         unit_ids = post_df[post_df["intervention"] == inter]['unit']
 
         # get pre-intervention measurements associated with P_inter
-        X1_df = pre_df[pre_df['unit'].isin(unit_ids)]  # .drop(columns=["intervention","unit"]))
+        X1_df = pre_df[pre_df['unit'].isin(unit_ids)].sort_values('unit')  # .drop(columns=["intervention","unit"]))
 
         # loop through all units (make sure id's unique)
         for n, unit in enumerate(pre_df.unit):
@@ -143,7 +147,8 @@ def fill_tensor(rct_data, rank=2, full_matrix_denoise=False):
             y1 = np.array(pre_df[pre_df.unit == unit].drop(columns=["intervention", "unit"]))[0]
 
             # get donor unit post-intervention measurements for intervention "inter"
-            X2_df = post_df[(post_df['unit'].isin(unit_ids)) & (post_df['intervention'] == inter)]
+            X2_df = post_df[(post_df['unit'].isin(unit_ids)) & (post_df['intervention'] == inter)].sort_values('unit')
+            print(X1_df, X2_df)
 
             # check if unit is in donor pool
             if unit in unit_ids:
