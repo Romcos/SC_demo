@@ -73,7 +73,7 @@ def hsvt(Z, rank=2):
 def cum_energy(s):
     return (100 * (s ** 2).cumsum() / (s ** 2).sum())
 
-def pcr(X1, X2, y, rank=2, full_matrix_denoise=False):
+def pcr(X,y,rank=2):
     """
     Input:
         X (N,T)
@@ -82,6 +82,11 @@ def pcr(X1, X2, y, rank=2, full_matrix_denoise=False):
     Output:
         beta (N) a linear model
     """
+    X = hsvt(X,rank=rank)
+    beta = np.linalg.pinv(X.T).dot(y)
+    return beta
+    
+def pcr_full_matrix_denoise(X1, X2, y, rank=2, full_matrix_denoise=False):
     if full_matrix_denoise:
         X = hsvt(np.concatenate((X1, X2), axis=1), rank=rank)
     else:
@@ -90,6 +95,20 @@ def pcr(X1, X2, y, rank=2, full_matrix_denoise=False):
     X_pre = X[:, :T]
     beta = np.linalg.pinv(X_pre.T).dot(y)
     return beta
+
+def pcr_normalised_metrics(X1_3d,y_2d,rank):
+    """ Input: 
+        X1: order 3 representing pre-intervention donnors (NxT0xM)
+        y_2d: order 2 representing pre-intervention target (T0xM)
+    
+    Output: 
+        beta (linear model) after metric renormalisation"""
+    metric_means = X1_3d.mean(axis=(0,1))
+    metric_stds = X1_3d.std(axis=(0,1))
+    y_2d = (y_2d - metric_means)/(metric_stds)            
+    X1_3d = (X1_3d - metric_means)/(metric_stds)
+    N,M,T0 = X1_3d.shape
+    return pcr(X1_3d.reshape(N,T0*M),y_2d.reshape(T0*M),rank=rank)
 
 ###### DIAGNOSTIC ######
 
@@ -183,23 +202,37 @@ def fill_tensor(pre_df, post_df, rank=2, full_matrix_denoise=True):
         #loop in all units
         for n,unit in enumerate(units):
             
-            # get target unit pre-intervention measurements
-            y1 = np.array(pre_df[pre_df.unit == unit].drop(columns=["intervention", "unit","metric"]))
-            y1 = y1.reshape((M*T0))
-        
+            # With full_matrix denoise
+            #
+            ## get target unit pre-intervention measurements
+            #y1 = np.array(pre_df[pre_df.unit == unit].drop(columns=["intervention", "unit","metric"]))
+            #y1 = y1.reshape((M*T0))
+            #
             # get donor unit post-intervention measurements for intervention "inter"
-            X2_df = post_df[post_df['unit'].isin(unit_ids)]
-            X2 = np.array(X2_df.drop(columns=["intervention", "unit","metric"])).reshape(n_i,M*(T-T0))
+            #X2_df = post_df[post_df['unit'].isin(unit_ids)]
+            #X2 = np.array(X2_df.drop(columns=["intervention", "unit","metric"])).reshape(n_i,M*(T-T0))
+            #
+            ## get donor unit pre-interventon measurements
+            #X1_df = pre_df[pre_df["unit"].isin(unit_ids)]
+            #X1 = np.array(X1_df.drop(columns=["intervention", "unit","metric"])).reshape(n_i,M*T0)
+            #beta = pcr_full_matrix_denoise(X1, X2, y1, rank=rank, full_matrix_denoise=full_matrix_denoise) 
+            
+            #with multiple metrics
+            #
+            #get target unit pre-intervention measurements
+            y1 = np.array(pre_df[pre_df.unit == unit].drop(columns=["intervention", "unit","metric"]))
+            y1 = y1.reshape((T0,M))
             
             # get donor unit pre-interventon measurements
             X1_df = pre_df[pre_df["unit"].isin(unit_ids)]
-            X1 = np.array(X1_df.drop(columns=["intervention", "unit","metric"])).reshape(n_i,M*T0)
+            X1 = np.array(X1_df.drop(columns=["intervention", "unit","metric"])).reshape(n_i,T0,M)
+            beta = pcr_normalised_metrics(X1, y1, rank=rank)
             
-            # Build linear model
-            beta = pcr(X1, X2, y1, rank=rank, full_matrix_denoise=full_matrix_denoise)
             beta_dict[(inter, unit)] = beta
             
             # forecast counterfactual
+            X2_df = post_df[post_df['unit'].isin(unit_ids)]
+            X2 = np.array(X2_df.drop(columns=["intervention", "unit","metric"])).reshape(n_i,M*(T-T0))
             out_data[n*I*M+i*M:n*I*M+(i+1)*M] = ((X2.T).dot(beta).T).reshape((M,T-T0))      
         
     out = pd.DataFrame(data=out_data, columns=post_df.drop(columns=["intervention", "unit","metric"]).columns)
